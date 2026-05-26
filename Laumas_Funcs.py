@@ -48,9 +48,13 @@ class laumas():
         self.read_status_register()
         try: 
             bytes = self.comm.read_registers(registeraddress=7,number_of_registers=2,functioncode=3)
-            byte1 = self.comm.read_register(registeraddress=7,number_of_decimals=0,functioncode=3,signed=True)
-            byte2 = self.comm.read_register(registeraddress=8,number_of_decimals=0,functioncode=3,signed=True)
+            gross_float = self.comm.read_float(registeraddress=6,functioncode=3,byteorder=minimalmodbus.BYTEORDER_BIG)
+            # byte1 = self.comm.read_register(registeraddress=7,number_of_decimals=0,functioncode=3,signed=True)
+            # byte2 = self.comm.read_register(registeraddress=8,number_of_decimals=0,functioncode=3,signed=True)
+            byte1 = bytes[0]
+            byte2 = bytes[1]
             print([byte1,byte2])
+            print(f"Read Float: {gross_float}")
             # print(int(bytes[1])/1000)
             gross_weight_string = f"{bytes[0]}.{bytes[1]}"
             self.gross_weight = self.gross_weight_sign*float(gross_weight_string)
@@ -71,16 +75,24 @@ class laumas():
         self.mVs[2] = self.comm.read_register(registeraddress=54,number_of_decimals=2,functioncode=3,signed=True)
         self.mVs[3] = self.comm.read_register(registeraddress=55,number_of_decimals=2,functioncode=3,signed=True)
 
-        for i in range(4):
-            print(f"mVs on Cell {i+1}: {self.mVs[i]}")
+        # for i in range(4):
+        #     print(f"mVs on Cell {i+1}: {self.mVs[i]}")
 
     def read_channels(self):
         self.channels = [0,0,0,0]
-        if self.perc_or_mv == 0:
+        self.loads    = [0,0,0,0]
+        if self.perc_or_mv == 0: # output mV
             self.channels[0] = self.comm.read_register(registeraddress=52,number_of_decimals=2,functioncode=3,signed=True)
             self.channels[1] = self.comm.read_register(registeraddress=53,number_of_decimals=2,functioncode=3,signed=True)
             self.channels[2] = self.comm.read_register(registeraddress=54,number_of_decimals=2,functioncode=3,signed=True)
             self.channels[3] = self.comm.read_register(registeraddress=55,number_of_decimals=2,functioncode=3,signed=True)
+
+            for i,mV in enumerate(self.channels):
+                Fs_ouput_mV = 2.9990*4.974 # calibrated mV/V multipied by the excitation voltage
+                slope = 50/Fs_ouput_mV     # max output in lbs divded by the full scale mV
+                
+                self.loads[i] = mV*slope
+            # print(f"Minimum Resolution: {0.01*slope} lbs")
 
         else:
             self.channels[0] = self.comm.read_register(registeraddress=52,number_of_decimals=1,functioncode=3,signed=True)
@@ -91,7 +103,7 @@ class laumas():
         print('-------------')
         for i in range(4):            
             if self.perc_or_mv == 0:
-                print(f"mVs on Cell {i+1}: {self.channels[i]} mV")
+                print(f"Cell {i+1}: {self.channels[i]} mV   =   {self.loads[i]:.2f}lbs ")
             else:
                 print(f"% on Cell {i+1}: {self.channels[i]}%")
 
@@ -99,12 +111,22 @@ class laumas():
 if __name__ == "__main__":
     import time
 
-    lc = laumas('COM3',1,1)
+    lc = laumas('COM3',1,0)
 
     try:
         while True:
             lc.read_channels()
-            time.sleep(1)
+
+            # if lc.perc_or_mv == 0:
+            #     print(lc.loads)
+
+
+            # lc.read_gross_weight()
+            # print(f'Gross Weight: {lc.gross_weight}')
+
+
+            time.sleep(0.2)
+
 
     except KeyboardInterrupt:
         print('Stopping')
