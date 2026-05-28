@@ -1,5 +1,6 @@
 import minimalmodbus
 import json
+import datetime
 
 timeout = 0.05 #seconds
 
@@ -15,7 +16,7 @@ class laumas():
             self.comm.mode = minimalmodbus.MODE_RTU   # rtu or ascii mode
             self.status  = 'Com Port Found: '+comm_port
 
-            self.sign_dict = {'0':-1,'1':1}
+            self.sign_dict = {'0':1,'1':-1,0:1,1:-1}
 
             self.perc_or_mv = perc_or_mV
 
@@ -23,8 +24,9 @@ class laumas():
                 # Send Command to enable mV reading per channel
                 self.comm.write_register(registeraddress=5,value=6902)
             else:
-                self.comm.write_register(registeraddress=51,value=0) # 0=% of load related to the gross weight 1=% of load related to the total weight (gross weight+zeroing component)
-                self.comm.write_register(registeraddress=5,value=6908)
+                self.comm.write_registers(registeraddress=50,values=[0,0]) # 0=% of load related to the gross weight 1=% of load related to the total weight (gross weight+zeroing component)
+                time.sleep(0.2)
+                self.comm.write_register(registeraddress=5,value=6808)
 
         except Exception as e:
             print(e)
@@ -42,52 +44,30 @@ class laumas():
         self.load_cell_error = bool(int(self.status[0]))
         self.AD_converter_malfunction = bool(int(self.status[1]))
         self.maximum_weight_exceeded = bool(int(self.status[2]))
-        self.gross_weight_sign = self.sign_dict[self.status[6]]
+        self.gross_weight_sign = self.sign_dict[self.status[-8]]
 
     def read_gross_weight(self):
         self.read_status_register()
+        time.sleep(0.01)
         try: 
-            bytes = self.comm.read_registers(registeraddress=7,number_of_registers=2,functioncode=3)
-            gross_float = self.comm.read_float(registeraddress=6,functioncode=3,byteorder=minimalmodbus.BYTEORDER_BIG)
-            # byte1 = self.comm.read_register(registeraddress=7,number_of_decimals=0,functioncode=3,signed=True)
-            # byte2 = self.comm.read_register(registeraddress=8,number_of_decimals=0,functioncode=3,signed=True)
-            byte1 = bytes[0]
-            byte2 = bytes[1]
-            print([byte1,byte2])
-            print(f"Read Float: {gross_float}")
-            # print(int(bytes[1])/1000)
-            gross_weight_string = f"{bytes[0]}.{bytes[1]}"
-            self.gross_weight = self.gross_weight_sign*float(gross_weight_string)
+            self.gross_weight = self.comm.read_register(registeraddress=8,number_of_decimals=3,functioncode=3,signed=False)*self.gross_weight_sign
+
         except Exception as e:
             print(f"Error reading Gross Weight: {e}")
 
     def read_load_percentages(self):
-        self.load_percentages = [0,0,0,0]
-        self.load_percentages[0] = self.comm.read_register(registeraddress=52,number_of_decimals=1,functioncode=3)
-        self.load_percentages[1] = self.comm.read_register(registeraddress=53,number_of_decimals=1,functioncode=3)
-        self.load_percentages[2] = self.comm.read_register(registeraddress=54,number_of_decimals=1,functioncode=3)
-        self.load_percentages[3] = self.comm.read_register(registeraddress=55,number_of_decimals=1,functioncode=3)
+        self.load_percentages = self.comm.read_registers(registeraddress=52,number_of_registers=4,functioncode=3)
+        for i,load in enumerate(self.load_percentages):
+            self.load_percentages[i] = load/10
 
     def read_mVs(self):
-        self.mVs = [0,0,0,0]
-        self.mVs[0] = self.comm.read_register(registeraddress=52,number_of_decimals=2,functioncode=3,signed=True)
-        self.mVs[1] = self.comm.read_register(registeraddress=53,number_of_decimals=2,functioncode=3,signed=True)
-        self.mVs[2] = self.comm.read_register(registeraddress=54,number_of_decimals=2,functioncode=3,signed=True)
-        self.mVs[3] = self.comm.read_register(registeraddress=55,number_of_decimals=2,functioncode=3,signed=True)
-
-        # for i in range(4):
-        #     print(f"mVs on Cell {i+1}: {self.mVs[i]}")
+        self.mVs = self.comm.read_registers(registeraddress=52,number_of_registers=4,functioncode=3)
 
     def read_channels(self):
-        self.channels = [0,0,0,0]
-        self.loads    = [0,0,0,0]
         if self.perc_or_mv == 0: # output mV
-            self.channels[0] = self.comm.read_register(registeraddress=52,number_of_decimals=2,functioncode=3,signed=True)
-            self.channels[1] = self.comm.read_register(registeraddress=53,number_of_decimals=2,functioncode=3,signed=True)
-            self.channels[2] = self.comm.read_register(registeraddress=54,number_of_decimals=2,functioncode=3,signed=True)
-            self.channels[3] = self.comm.read_register(registeraddress=55,number_of_decimals=2,functioncode=3,signed=True)
+            self.read_mVs()
 
-            for i,mV in enumerate(self.channels):
+            for i,mV in enumerate(self.mVs):
                 Fs_ouput_mV = 2.9990*4.974 # calibrated mV/V multipied by the excitation voltage
                 slope = 50/Fs_ouput_mV     # max output in lbs divded by the full scale mV
                 
@@ -95,23 +75,21 @@ class laumas():
             # print(f"Minimum Resolution: {0.01*slope} lbs")
 
         else:
-            self.channels[0] = self.comm.read_register(registeraddress=52,number_of_decimals=1,functioncode=3,signed=True)
-            self.channels[1] = self.comm.read_register(registeraddress=53,number_of_decimals=1,functioncode=3,signed=True)
-            self.channels[2] = self.comm.read_register(registeraddress=54,number_of_decimals=1,functioncode=3,signed=True)
-            self.channels[3] = self.comm.read_register(registeraddress=55,number_of_decimals=1,functioncode=3,signed=True)
-        
+            self.read_load_percentages()
+
         print('-------------')
+        print(f'Timestamp: {datetime.datetime.now()}')
         for i in range(4):            
             if self.perc_or_mv == 0:
-                print(f"Cell {i+1}: {self.channels[i]} mV   =   {self.loads[i]:.2f}lbs ")
+                print(f"Cell {i+1}: {self.mVs[i]} mV   =   {self.loads[i]:.2f}lbs ")
             else:
-                print(f"% on Cell {i+1}: {self.channels[i]}%")
+                print(f"% on Cell {i+1}: {self.load_percentages[i]}%")
 
 
 if __name__ == "__main__":
     import time
 
-    lc = laumas('COM3',1,0)
+    lc = laumas('COM3',1,1)
 
     try:
         while True:
