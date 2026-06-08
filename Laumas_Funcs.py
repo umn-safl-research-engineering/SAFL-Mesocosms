@@ -154,8 +154,8 @@ if __name__ == "__main__":
     
 
     with open(filename,'w') as fid:
-        fid.write(f"Timestamp,Bucket1,Bucket2,Bucket3,Ch1,Ch2,Ch3,Ch4,Ch1,Ch2,Ch3,Ch4,Gross Weight\n")
-        fid.write(f",lbs,lbs,lbs,mV,mV,mV,mV,%,%,%,%,lbs\n")
+        fid.write(f"Timestamp,Bucket1,Bucket2,Bucket3,Ch1,Ch2,Ch3,Ch4,Vx,Ch1,Ch2,Ch3,Ch4,Gross Weight\n")
+        fid.write(f",lbs,lbs,lbs,mV,mV,mV,mV,V,%,%,%,%,lbs\n")
 
     try:
         while True:
@@ -172,7 +172,9 @@ if __name__ == "__main__":
             for i in lc.mVs:
                 data_string = data_string+f",{i}"
 
-            print(data_string)
+            Vx = input('Enter the Excitation Voltage: ')
+
+            data_string = data_string+f",{Vx}"
 
             # Switch to displaying each channel in Percent
             lc.comm.write_registers(registeraddress=50,values=[0,0]) # 0=% of load related to the gross weight 1=% of load related to the total weight (gross weight+zeroing component)
