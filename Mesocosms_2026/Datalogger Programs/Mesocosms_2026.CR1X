@@ -1,0 +1,108 @@
+'CR1000X Series Datalogger
+
+Public PTemp, Batt_volt, i
+Public Rain_mm
+Units Rain_mm = mm
+Public Rain_24Hr
+Public Rain_1Hr
+
+Public LoadCells_lbs(35)
+Public LoadCells_kg(35)
+Public LoadCells_FS = 100 'Lbs
+Public LoadCells_mVV(35)
+Public LoadCells_Sense(35) = { _
+2.9931, _
+3.0053, _
+3.0234, _
+3.0061, _
+3.0018, _
+2.9962, _
+3.0029, _
+3.0036, _
+3.021, _
+2.9937, _
+3.014, _
+3, _
+2.9996, _
+2.9903, _
+3.0182, _
+3.0126, _
+2.9948, _
+2.9898, _
+3.008, _
+2.9908, _
+2.9985, _
+3.0027, _
+3.0003, _
+3.0034, _
+2.9935, _
+3.0012, _
+2.9975, _
+3.0111, _
+3.0099, _
+3.004, _
+2.9987, _
+3.0044, _
+2.9875, _
+2.9959, _
+2.997 _
+}
+
+
+'Define Data Tables
+DataTable (LoadCells,1,-1) 'Set table size to # of records, or -1 to autoallocate.
+  DataInterval (0,1,Sec,10)
+  Minimum (1,Batt_volt,FP2,False,False)
+  Sample (1,PTemp,FP2)
+  Sample(35,LoadCells_kg,IEEE4)
+EndTable
+
+DataTable(LoadCells_Raw,1,-1)
+  DataInterval(0,1,Sec,10)
+  Sample(1,Rain_mm,FP2)
+  Sample(35,LoadCells_mVV,IEEE4)
+EndTable
+
+DataTable(Rain,1,-1)
+  DataInterval(0,1,Min,0)
+  Totalize(1,Rain_mm,FP2,0)
+  Sample(1,Rain_24Hr,FP2)
+  Sample(1,Rain_1Hr,FP2)
+EndTable
+
+
+
+'Main Program
+BeginProg
+  CPIAddModule(VOLT116,9109,"VOLT116-1",1)
+  CPIAddModule(VOLT116,9108,"VOLT116-2",2)
+  CPISpeed(500)
+
+  Scan (1,Sec,0,0)
+    PanelTemp (PTemp,15000)
+    Battery (Batt_volt)
+
+    PulseCount(Rain_mm,1,P1,1,0,0.254,0)
+    TotalRun(Rain_24Hr,1,Rain_mm,1440*60,0)
+    TotalRun(Rain_1Hr,1,Rain_mm,60*60,0)
+
+    BrFull(LoadCells_mVV,8,mV200,1,Vx1,2,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,1, LoadCells_mVV(9),4,mV200,1,X1,4,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,2,LoadCells_mVV(13),6,mv200,1,X1,4,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,1,LoadCells_mVV(19),2,mv200,11,X3,2,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,1,LoadCells_mVV(21),4,mv200,13,X4,4,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,1,LoadCells_mVV(25),5,mv200,5,X2,4,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,2,LoadCells_mVV(30),2,mv200,7,X2,2,4000,False,False,0,_60Hz,1,0)
+    CDM_BrFull(VOLT116,2,LoadCells_mVV(32),4,mv200,9,X3,4,4000,False,False,0,_60Hz,1,0)
+
+    For i = 1 To 35:
+      LoadCells_lbs(i) = LoadCells_mVV(i)*LoadCells_FS/LoadCells_Sense(i)
+      LoadCells_kg(i) = LoadCells_lbs(i)*0.453592
+    Next i
+
+    CallTable LoadCells
+    CallTable LoadCells_Raw
+    CallTable Rain
+  NextScan
+EndProg
+
